@@ -5,8 +5,7 @@
 # si simulano le seepage faces in corrispondenza dei punti di emersione della falda (non noti a priori)
 # Bisogna dare in input il DTM della zona più un raster che funge da maschera per il bacino e identifica le celle
 # a cui assegnare i dreni (in questo caso tutte). 
-# In questa versione del modello il reticolo di calcolo segue la topografia (mentre nella versione "parallelepipedo"
-# la griglia di calcolo ha layers orizzontali e i dreni vengono assegnati alla quota della topografia)
+# # la griglia di calcolo ha layers orizzontali e i dreni vengono assegnati alla quota della topografia
 # ==
 # questa versione usa una discretizzazione a parallelepipedo e le celle fuori dal bacino o al 
 # di sopra di esso vengono disattivate(regional_groundwater_model_MIO invece ha ladiscretizzazione 
@@ -34,11 +33,11 @@ import matplotlib.pyplot as plt
 # nel caso in cui si lasci fissa la conducibilità idraulica (mean_y=-16.12 = mean_k=1e-7m/s)
 
 
-IMP_DEPTH = [10, 100, 1000]                   #[0, 10, 100, 1000]                    # profondità dello strato impermeabilie rispetto alla cella più depressa del dem
-R =  [0.0005,	 0.0014,	0.0043,	0.0130,	0.0389,	0.1168,	0.3504,	1.0512,	3.1536]                       # [0.0005,	0.0014,	0.0043,	0.0130,	0.0389,	0.1168,	0.3504,	1.0512,	3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
+IMP_DEPTH =[10, 100, 1000]                   #[0, 10, 100, 1000]                    # profondità dello strato impermeabilie rispetto alla cella più depressa del dem
+R =  [0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]                       # [0.0005,	0.0014,	0.0043,	0.0130,	0.0389,	0.1168,	0.3504,	1.0512,	3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
 MEAN_Y = [-16.12]                             #[-18.42, -17.27,  -16.12, -14.97 , -13.82, -12.67,  -11.51]                   #[-18.42, -16.12, -13.82, -11.51]      # media del campo log(k)
 VAR_Y = [0]                                   # [0, 0, 0, 0, 0, 0, 0]                        #[0, 0, 0, 0]                          # varianza del campo log(k)
-TOPOGRAPHY_FACTOR = [0.25, 1, 4]              #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
+TOPOGRAPHY_FACTOR = [0.25, 1, 4]             #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
 ALPHA = [0.0001, 0.001, 0.01]                 #[0, 0.0001, 0.001, 0.01]              # parametro che controlla la decrescita esponenziale della Ks
     
 porosity=0.1                          
@@ -54,15 +53,6 @@ particle_nubmer=11283                        # da cambiare se si cambia il numer
 
 modelname = "model2" 
 modelpath = "../Model_mio/"
-
-
-############################################
-#Initialize Modflow Nwt solver (loop dependent, altrimenti metterlo sopra ai loops)
-###########################################
-        
-mf1 = flopy.modflow.Modflow(modelname, exe_name="../Exe/MODFLOW-NWT_64.exe", version="mfnwt", model_ws=modelpath)
-nwt = flopy.modflow.ModflowNwt(mf1 , maxiterout=3000, headtol=0.0001, fluxtol=0.001, linmeth=1,  maxitinner=7000, mxiterxmd = 2000, stoptol=1e-10, hclosexmd =1e-5, dbdtheta = 0.8, backflag=1)
-
 
 
 ##########################################################################
@@ -117,7 +107,16 @@ for iter_1 in range(len(IMP_DEPTH)):
        
     for iter_5 in range(len(MEAN_Y)): 
 
+    
 
+        ############################################
+        #Initialize Modflow Nwt solver (loop dependent, altrimenti metterlo sopra ai loops)
+        ###########################################
+        
+        mf1 = flopy.modflow.Modflow(modelname, exe_name="../Exe/MODFLOW-NWT_64.exe", version="mfnwt", model_ws=modelpath)
+        nwt = flopy.modflow.ModflowNwt(mf1 , maxiterout=3000, headtol=0.0001, fluxtol=R[iter_4]/50, linmeth=1,  maxitinner=15000, mxiterxmd = 2000, stoptol=1e-12, hclosexmd =1e-4, dbdtheta = 0.85, backflag=1, msdr=20, thickfact=1e-04)
+
+    
         ##########################################################################  
         # spatial discretization
         #########################################################################
@@ -180,7 +179,7 @@ for iter_1 in range(len(IMP_DEPTH)):
          for idx2 in range(ncol):
           for idx3 in range(nlay):   
            if demData_stretched[idx1,idx2] >= botm[idx3+1,idx1,idx2] and demData_stretched[idx1,idx2]>0:    
-            reduction_factor_Ks[idx3,idx1,idx2] = 0.01 + (1-0.01) * np.exp(- ALPHA[iter_3] * (demData_stretched[idx1,idx2] - ( botm[idx3,idx1,idx2] + botm[idx3+1,idx1,idx2] )/2  )  )
+            reduction_factor_Ks[idx3,idx1,idx2] = 0.05 + (1-0.05) * np.exp(- ALPHA[iter_3] * (demData_stretched[idx1,idx2] - ( botm[idx3,idx1,idx2] + botm[idx3+1,idx1,idx2] )/2  )  )
         
         hk= np.multiply(hk,reduction_factor_Ks)
         
@@ -201,7 +200,7 @@ for iter_1 in range(len(IMP_DEPTH)):
         
         #strt= zbot + IMP_DEPTH[iter_1] + (ztop - zbot - IMP_DEPTH[iter_1]) * R[iter_4]/365/86400 / np.mean(hk) 
         #strt= demData_stretched * R[iter_4]/365/86400 / np.mean(hk) + 1
-        strt= demData_stretched * 1/(1 + np.exp(5-10*R[iter_4]/365/86400 / np.mean(hk))) + 10
+        strt= demData_stretched * 1/(1 + np.exp(5-10*R[iter_4]/365/86400 / np.mean(hk))) + 100
         #strt= zbot + Imp_depth - 10
         #strt= demData_stretched
         
