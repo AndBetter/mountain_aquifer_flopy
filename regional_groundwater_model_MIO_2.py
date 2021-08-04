@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 
 
 IMP_DEPTH =[10, 100, 1000]                   #[0, 10, 100, 1000]                    # profondità dello strato impermeabilie rispetto alla cella più depressa del dem
-R =  [0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]                       # [0.0005,	0.0014,	0.0043,	0.0130,	0.0389,	0.1168,	0.3504,	1.0512,	3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
+R =    [0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]                                  #[0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]                       # [0.0005,	0.0014,	0.0043,	0.0130,	0.0389,	0.1168,	0.3504,	1.0512,	3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
 MEAN_Y = [-16.12]                             #[-18.42, -17.27,  -16.12, -14.97 , -13.82, -12.67,  -11.51]                   #[-18.42, -16.12, -13.82, -11.51]      # media del campo log(k)
 VAR_Y = [0]                                   # [0, 0, 0, 0, 0, 0, 0]                        #[0, 0, 0, 0]                          # varianza del campo log(k)
 TOPOGRAPHY_FACTOR = [0.25, 1, 4]             #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
@@ -114,7 +114,7 @@ for iter_1 in range(len(IMP_DEPTH)):
         ###########################################
         
         mf1 = flopy.modflow.Modflow(modelname, exe_name="../Exe/MODFLOW-NWT_64.exe", version="mfnwt", model_ws=modelpath)
-        nwt = flopy.modflow.ModflowNwt(mf1 , maxiterout=3000, headtol=0.0001, fluxtol=R[iter_4]/50, linmeth=1,  maxitinner=15000, mxiterxmd = 2000, stoptol=1e-12, hclosexmd =1e-4, dbdtheta = 0.85, backflag=1, msdr=20, thickfact=1e-04)
+        nwt = flopy.modflow.ModflowNwt(mf1 , maxiterout=3000, headtol=0.001, fluxtol=R[iter_4]/50, linmeth=1,  maxitinner=15000, mxiterxmd = 2000, stoptol=1e-10, hclosexmd =1e-4, dbdtheta = 0.85, backflag=1, msdr=20, thickfact=1e-04)
 
     
         ##########################################################################  
@@ -200,7 +200,8 @@ for iter_1 in range(len(IMP_DEPTH)):
         
         #strt= zbot + IMP_DEPTH[iter_1] + (ztop - zbot - IMP_DEPTH[iter_1]) * R[iter_4]/365/86400 / np.mean(hk) 
         #strt= demData_stretched * R[iter_4]/365/86400 / np.mean(hk) + 1
-        strt= demData_stretched * 1/(1 + np.exp(5-10*R[iter_4]/365/86400 / np.mean(hk))) + 100
+        strt= demData_stretched * 0.5 + 200
+        #strt= demData_stretched * 1/(1 + np.exp(5-10*R[iter_4]/365/86400 / np.mean(hk))) + 100
         #strt= zbot + Imp_depth - 10
         #strt= demData_stretched
         
@@ -417,7 +418,7 @@ for iter_1 in range(len(IMP_DEPTH)):
             time_particles_at_cell.append(e0.time) 
     
     
-        for i in range(len(flux)):  # cambia di segno ai flussi (flussi sono in m3/s)
+        for i in range(len(flux)):  # cambia di segno i flussi (flussi sono in m3/s)
             flux[i]=flux[i] * -1
     
         for j in range(len(time_particles_at_cell)):    #calcola le età pesate con i flussi
@@ -442,7 +443,6 @@ for iter_1 in range(len(IMP_DEPTH)):
 ##################################################################################
 #######end model runs#############################################################
 ##################################################################################
-
 
 
 
