@@ -574,3 +574,39 @@ plt.show()
 # 
 # 
 # =============================================================================
+
+############################################
+##### saves variables
+############################################
+
+import shelve
+
+filename='C:\PostDoc\Acquiferi_trentini\Risultati\AAA_adimensionali/shelve.out'
+my_shelf = shelve.open(filename,'n') # 'n' for new
+
+my_shelf['demData_original'] = globals()['streamflow_age_ARRAY']
+my_shelf['drain_fluxes_2D_ARRAY'] = globals()['drain_fluxes_2D_ARRAY']
+my_shelf['traveltime_ARRAY'] = globals()['traveltime_ARRAY']
+my_shelf['streamflow_age_ARRAY'] = globals()['streamflow_age_ARRAY']
+
+
+my_shelf.close()
+
+
+############################################
+##### load variables
+############################################
+
+# =============================================================================
+# import shelve
+# 
+# filename='C:\PostDoc\Acquiferi_trentini\Risultati\AAA_adimensionali/shelve.out'
+# 
+# my_shelf = shelve.open(filename)
+# for key in my_shelf:
+#     globals()[key]=my_shelf[key]
+# my_shelf.close()
+# =============================================================================
+
+
+
