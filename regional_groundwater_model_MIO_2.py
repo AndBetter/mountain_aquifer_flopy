@@ -33,12 +33,12 @@ import matplotlib.pyplot as plt
 # nel caso in cui si lasci fissa la conducibilità idraulica (mean_y=-16.12 = mean_k=1e-7m/s)
 
 
-IMP_DEPTH =[10, 100, 1000]                   #[0, 10, 100, 1000]                    # profondità dello strato impermeabilie rispetto alla cella più depressa del dem
-R =    [0.0005]                                  #[0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]                       # [0.0005,	0.0014,	0.0043,	0.0130,	0.0389,	0.1168,	0.3504,	1.0512,	3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
+IMP_DEPTH =[1000]                   #[0, 10, 100, 1000]                    # profondità dello strato impermeabilie rispetto alla cella più depressa del dem
+R =    [0.0031536]                     #logscale: [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455,	3.1536]          #logscale: [0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
 MEAN_Y = [-16.12]                             #[-18.42, -17.27,  -16.12, -14.97 , -13.82, -12.67,  -11.51]                   #[-18.42, -16.12, -13.82, -11.51]      # media del campo log(k)
 VAR_Y = [0]                                   # [0, 0, 0, 0, 0, 0, 0]                        #[0, 0, 0, 0]                          # varianza del campo log(k)
-TOPOGRAPHY_FACTOR = [0.25, 1, 4]             #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
-ALPHA = [0.0001, 0.001, 0.01]                 #[0, 0.0001, 0.001, 0.01]              # parametro che controlla la decrescita esponenziale della Ks
+TOPOGRAPHY_FACTOR = [4]             #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
+ALPHA = [0.01]                 #[0, 0.0001, 0.001, 0.01]              # parametro che controlla la decrescita esponenziale della Ks
     
 porosity=0.1                          
                    
@@ -54,11 +54,11 @@ particle_nubmer=11283                        # da cambiare se si cambia il numer
 modelname = "model2" 
 modelpath = "../Model_mio/"
 
-exeMODFLOW = "C:/DEV/Exe/MODFLOW-NWT_64.exe"
-exeMODPATH = "C:/DEV/Exe/mpath7.exe"
+#exeMODFLOW = "C:/DEV/Exe/MODFLOW-NWT_64.exe"
+#exeMODPATH = "C:/DEV/Exe/mpath7.exe"
 
-#exeMODFLOW = "../Exe/MODFLOW-NWT_64.exe"
-#exeMODPATH = "../Exe/mpath7.exe"
+exeMODFLOW = "../Exe/MODFLOW-NWT_64.exe"
+exeMODPATH = "../Exe/mpath7.exe"
 
 
 
@@ -121,7 +121,7 @@ for iter_1 in range(len(IMP_DEPTH)):
         ###########################################
         
         mf1 = flopy.modflow.Modflow(modelname, exe_name= exeMODFLOW, version="mfnwt", model_ws=modelpath)
-        nwt = flopy.modflow.ModflowNwt(mf1 , maxiterout=3000, headtol=0.0001, fluxtol=R[iter_4]/50, linmeth=1,  maxitinner=15000, mxiterxmd = 2000, stoptol=1e-12, hclosexmd =1e-4, dbdtheta = 0.85, backflag=1, msdr=20, thickfact=1e-04)
+        nwt = flopy.modflow.ModflowNwt(mf1 , maxiterout=10000,  maxitinner=10000, mxiterxmd = 10000, headtol=0.001, fluxtol=R[iter_4]/50, linmeth=1, stoptol=1e-10, hclosexmd =1e-3, dbdtheta = 0.6, backflag=1, msdr=25, thickfact=1e-04)
 
     
         ##########################################################################  
@@ -575,13 +575,14 @@ plt.show()
 # 
 # =============================================================================
 
+
 ############################################
 ##### saves variables
 ############################################
 
 import shelve
 
-filename='C:\PostDoc\Acquiferi_trentini\Risultati\AAA_adimensionali/shelve.out'
+filename='C:/PostDoc/Acquiferi_trentini/Risultati/AAA_adimensionali_full_run/shelve.out'
 my_shelf = shelve.open(filename,'n') # 'n' for new
 
 my_shelf['demData_original'] = globals()['streamflow_age_ARRAY']
@@ -600,13 +601,11 @@ my_shelf.close()
 # =============================================================================
 # import shelve
 # 
-# filename='C:\PostDoc\Acquiferi_trentini\Risultati\AAA_adimensionali/shelve.out'
+# filename='C:/PostDoc/Acquiferi_trentini/Risultati/AAA_adimensionali_full_run/shelve.out'
 # 
 # my_shelf = shelve.open(filename)
 # for key in my_shelf:
 #     globals()[key]=my_shelf[key]
 # my_shelf.close()
 # =============================================================================
-
-
 
