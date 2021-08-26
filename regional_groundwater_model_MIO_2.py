@@ -54,11 +54,11 @@ particle_nubmer=11283                        # da cambiare se si cambia il numer
 modelname = "model2" 
 modelpath = "../Model_mio/"
 
-#exeMODFLOW = "C:/DEV/Exe/MODFLOW-NWT_64.exe"
-#exeMODPATH = "C:/DEV/Exe/mpath7.exe"
+exeMODFLOW = "C:/DEV/Exe/MODFLOW-NWT_64.exe"
+exeMODPATH = "C:/DEV/Exe/mpath7.exe"
 
-exeMODFLOW = "../Exe/MODFLOW-NWT_64.exe"
-exeMODPATH = "../Exe/mpath7.exe"
+#exeMODFLOW = "../Exe/MODFLOW-NWT_64.exe"
+#exeMODPATH = "../Exe/mpath7.exe"
 
 
 
@@ -110,18 +110,18 @@ for iter_1 in range(len(IMP_DEPTH)):
 
   for iter_3 in range(len(ALPHA)):   
 
-   for iter_4 in range(len(R)):     
+   for iter_4 in range(len(MEAN_Y)): 
+           
+    for iter_5 in range(len(R)):     
        
-    for iter_5 in range(len(MEAN_Y)): 
 
-    
 
         ############################################
         #Initialize Modflow Nwt solver (loop dependent, altrimenti metterlo sopra ai loops)
         ###########################################
         
         mf1 = flopy.modflow.Modflow(modelname, exe_name= exeMODFLOW, version="mfnwt", model_ws=modelpath)
-        nwt = flopy.modflow.ModflowNwt(mf1 , maxiterout=10000,  maxitinner=10000, mxiterxmd = 10000, headtol=0.001, fluxtol=R[iter_4]/50, linmeth=1, stoptol=1e-10, hclosexmd =1e-3, dbdtheta = 0.6, backflag=1, msdr=25, thickfact=1e-04)
+        nwt = flopy.modflow.ModflowNwt(mf1 , maxiterout=15000,  maxitinner=10000, mxiterxmd = 10000, headtol=0.001, fluxtol=R[iter_5]/50, linmeth=1, stoptol=1e-10, hclosexmd =1e-3, dbdtheta = 0.5, backflag=1, msdr=25, thickfact=1e-04)
 
     
         ##########################################################################  
@@ -176,7 +176,7 @@ for iter_1 in range(len(IMP_DEPTH)):
             hk = np.fromfile( f, dtype=dt, count=-1 ).reshape((nlay,nrow,ncol),order='C')
             f.close()
         
-        hk= np.exp(np.sqrt(VAR_Y[iter_5])* hk + MEAN_Y[iter_5])  # passa dalla log conductivity normalizzata alla conducibilità vera e propria  <----------------
+        hk= np.exp(np.sqrt(VAR_Y[iter_4])* hk + MEAN_Y[iter_4])  # passa dalla log conductivity normalizzata alla conducibilità vera e propria  <----------------
          
         #########################################################################
         # fa variare la conducibilità idraulica con la profondità (la matrice reduction_factor_Ks corrisponde a come le k vengono scalate, decresce esponenzialmente da 1 a un valore minimo ora impostato a 0.01)
@@ -205,10 +205,10 @@ for iter_1 in range(len(IMP_DEPTH)):
         
         #condizini iniziali di primo tentativo
         
-        #strt= zbot + IMP_DEPTH[iter_1] + (ztop - zbot - IMP_DEPTH[iter_1]) * R[iter_4]/365/86400 / np.mean(hk) 
-        #strt= demData_stretched * R[iter_4]/365/86400 / np.mean(hk) + 1
+        #strt= zbot + IMP_DEPTH[iter_1] + (ztop - zbot - IMP_DEPTH[iter_1]) * R[iter_5]/365/86400 / np.mean(hk) 
+        #strt= demData_stretched * R[iter_5]/365/86400 / np.mean(hk) + 1
         strt= demData_stretched * 0.5 + 200
-        #strt= demData_stretched * 1/(1 + np.exp(5-10*R[iter_4]/365/86400 / np.mean(hk))) + 100
+        #strt= demData_stretched * 1/(1 + np.exp(5-10*R[iter_5]/365/86400 / np.mean(hk))) + 100
         #strt= zbot + Imp_depth - 10
         #strt= demData_stretched
         
@@ -221,7 +221,7 @@ for iter_1 in range(len(IMP_DEPTH)):
         
         
         #Add the recharge package (RCH) to the MODFLOW model
-        rch = np.ones((nrow, ncol), dtype=np.float32) * R[iter_4]/365/86400          #  <--------------------
+        rch = np.ones((nrow, ncol), dtype=np.float32) * R[iter_5]/365/86400          #  <--------------------
         rch_data = {0: rch}
         rch = flopy.modflow.ModflowRch(mf1, nrchop=3, rech =rch_data)
         
@@ -437,7 +437,7 @@ for iter_1 in range(len(IMP_DEPTH)):
             
         streamflow_age_ARRAY[0:len(streamflow_age),run_count]=streamflow_age
     
-        R_K_ratio[0,run_count] = ( R[iter_4] / 3600/24/365) /  np.exp(  (MEAN_Y[iter_5] + VAR_Y[iter_5])/2)
+        R_K_ratio[0,run_count] = ( R[iter_5] / 3600/24/365) /  np.exp(  (MEAN_Y[iter_4] + VAR_Y[iter_4])/2)
     
         #########################################################################################
         ####### end particle tracking ###########################################################
@@ -608,4 +608,3 @@ my_shelf.close()
 #     globals()[key]=my_shelf[key]
 # my_shelf.close()
 # =============================================================================
-
