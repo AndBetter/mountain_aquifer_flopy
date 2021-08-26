@@ -345,7 +345,9 @@ def MODELLO(IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):
         traveltime=e.time
         e1 = endobj.get_data(partid=1)   # travel time per una particlella specificata
         
-
+        
+        traveltime_ARRAY[:,run_count]=traveltime
+        #traveltime_ARRAY.append=traveltime
         
         ##########################################################
         ###### estrae le traveltimes in corrispondenza dei punti in cui il fluss esce dal pc e calcola l'età dello streamflow
@@ -375,9 +377,10 @@ def MODELLO(IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):
         streamflow_age=np.array(streamflow_age)     
             
             
-
+        streamflow_age_ARRAY[0:len(streamflow_age),run_count]=streamflow_age
     
-        R_K_ratio[0,run_count] = ( R / 3600/24/365) /  np.exp(  (MEAN_Y + VAR_Y)/2)
+        R_K_ratio[0,run_count] = ( R/ 3600/24/365) /  np.exp(  (MEAN_Y + VAR_Y)/2)
+    
     
         #########################################################################################
         ####### end particle tracking ###########################################################
@@ -457,8 +460,9 @@ for iter_1 in range(len(IMP_DEPTH)):
     if __name__ == '__main__':
      for i in R:
       with Pool(len(R)) as p:
-       output = (p.starmap(MODELLO,  [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],i] ))
-
+       output = (p.starmap(MODELLO,  [  [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4], i]  ] ))
+       traveltime_ARRAY  =  np.append(traveltime_ARRAY,output[:,0],1)    
+       streamflow_age_ARRAY  = np.append(streamflow_age_ARRAY,output[:,1],1)  
 # =============================================================================
 #     if __name__ == '__main__':
 #       with Pool(len(R)) as p:
@@ -475,8 +479,7 @@ for iter_1 in range(len(IMP_DEPTH)):
 # =============================================================================
                         
                         
-    traveltime_ARRAY  =  np.append(traveltime_ARRAY,output[:,0],1)    
-    streamflow_age_ARRAY  = np.append(streamflow_age_ARRAY,output[:,1],1)                  
+                
 # =============================================================================
 #     queue = Queue()
 #     for R_i in R:
@@ -503,156 +506,158 @@ for iter_1 in range(len(IMP_DEPTH)):
 
 
 
-#######################################################################
-## model results and post processing###################################
-#######################################################################
-
-
-#Import model
-ml = flopy.modflow.Modflow.load('../Model_mio/model2.nam')    #<---------
-
-# First step is to set up the plot
-fig = plt.figure(figsize=(15, 15))
-ax = fig.add_subplot(1, 1, 1, aspect='equal')
-
-# Next we create an instance of the ModelMap class
-modelmap = flopy.plot.ModelMap(sr=ml.dis.sr)
-
-# Then we can use the plot_grid() method to draw the grid
-# The return value for this function is a matplotlib LineCollection object,
-# which could be manipulated (or used) later if necessary.
-linecollection = modelmap.plot_grid(linewidth=0.4)
-
-
-
-#Cross section of model grid representation
-
-fig = plt.figure(figsize=(15, 6))
-ax = fig.add_subplot(1, 1, 1)
-# Next we create an instance of the ModelCrossSection class
-#modelxsect = flopy.plot.ModelCrossSection(model=ml, line={'Column': 5})
-modelxsect = flopy.plot.ModelCrossSection(model=ml, line={'Row': 99})
-
-# Then we can use the plot_grid() method to draw the grid
-# The return value for this function is a matplotlib LineCollection object,
-# which could be manipulated (or used) later if necessary.
-linecollection = modelxsect.plot_grid(linewidth=0.4)
-t = ax.set_title('Column 6 Cross-Section - Model Grid')
-
-
-
-#Active/inactive cells on model extension
-
-fig = plt.figure(figsize=(15, 15))
-ax = fig.add_subplot(1, 1, 1, aspect='equal')
-modelmap = flopy.plot.ModelMap(model=ml, rotation=0)
-quadmesh = modelmap.plot_ibound(color_noflow='cyan')
-linecollection = modelmap.plot_grid(linewidth=0.4)
-
-
-#Cross sections of active/inactive cells
-
-fig = plt.figure(figsize=(15, 6))
-ax = fig.add_subplot(1, 1, 1)
-modelxsect = flopy.plot.ModelCrossSection(model=ml, line={'Column': 5})
-patches = modelxsect.plot_ibound(color_noflow='cyan')
-linecollection = modelxsect.plot_grid(linewidth=0.4)
-t = ax.set_title('Column 6 Cross-Section with IBOUND Boundary Conditions')
-
-
-#Channel network as drain (DRN) package
-
-fig = plt.figure(figsize=(15, 15))
-ax = fig.add_subplot(1, 1, 1, aspect='equal')
-modelmap = flopy.plot.ModelMap(model=ml, rotation=-14)
-quadmesh = modelmap.plot_ibound(color_noflow='cyan')
-quadmesh = modelmap.plot_bc('DRN', color='blue')
-linecollection = modelmap.plot_grid(linewidth=0.4)
-
-
-#Model grid and heads representation
-
-fname = os.path.join(modelpath, 'model2.hds')
-hdobj = flopy.utils.HeadFile(fname)
-head = hdobj.get_data()
-
-fig = plt.figure(figsize=(30, 30))
-ax = fig.add_subplot(1, 2, 1, aspect='equal')
-modelmap = flopy.plot.ModelMap(model=ml, rotation=-14)
-#quadmesh = modelmap.plot_ibound()
-quadmesh = modelmap.plot_array(head, masked_values=[-2.e+20], alpha=0.8)
-linecollection = modelmap.plot_grid(linewidth=0.2)
-
-#############################################################
-#Plot fluxes out of drains 3D (fette)#######################
-############################################################
-
-a=drain_fluxes_3D[0]
-a=a.data[40,:,:]
-fig=plt.imshow(a, interpolation='none',vmin=-0.005, vmax=0)
-plt.show()
-
-#############################################################################
-#Plot fluxes out of drains 2D (somma lungo le verticali)#####################
-#############################################################################
-
-##plot singolo
-
-fig=plt.imshow(drain_fluxes_2D, interpolation='none')  # ...interpolation='none',vmin=-0.01, vmax=0
-plt.show()
-
-
-
-##plotta tutti
-
 # =============================================================================
-# plt.figure()
-# f, axarr = plt.subplots(2,5) 
-# 
-# axarr[0,0].imshow(drain_fluxes_2D_ARRAY[0,:,:], interpolation='none')  
-# axarr[0,1].imshow(drain_fluxes_2D_ARRAY[1,:,:], interpolation='none')  
-# axarr[0,2].imshow(drain_fluxes_2D_ARRAY[2,:,:], interpolation='none')  
-# axarr[0,3].imshow(drain_fluxes_2D_ARRAY[3,:,:], interpolation='none')  
-# axarr[0,4].imshow(drain_fluxes_2D_ARRAY[4,:,:], interpolation='none')  
-# axarr[1,0].imshow(drain_fluxes_2D_ARRAY[5,:,:], interpolation='none')  
-# axarr[1,1].imshow(drain_fluxes_2D_ARRAY[6,:,:], interpolation='none')  
-# axarr[1,2].imshow(drain_fluxes_2D_ARRAY[7,:,:], interpolation='none')  
-# axarr[1,3].imshow(drain_fluxes_2D_ARRAY[8,:,:], interpolation='none')  
-# axarr[1,4].imshow(drain_fluxes_2D_ARRAY[9,:,:], interpolation='none')
+# #######################################################################
+# ## model results and post processing###################################
+# #######################################################################
 # 
 # 
-# =============================================================================
-
-
-############################################
-##### saves variables
-############################################
-
-import shelve
-
-filename='C:/PostDoc/Acquiferi_trentini/Risultati/AAA_adimensionali_full_run/shelve.out'
-my_shelf = shelve.open(filename,'n') # 'n' for new
-
-my_shelf['demData_original'] = globals()['streamflow_age_ARRAY']
-my_shelf['drain_fluxes_2D_ARRAY'] = globals()['drain_fluxes_2D_ARRAY']
-my_shelf['traveltime_ARRAY'] = globals()['traveltime_ARRAY']
-my_shelf['streamflow_age_ARRAY'] = globals()['streamflow_age_ARRAY']
-
-
-my_shelf.close()
-
-
-############################################
-##### load variables
-############################################
-
-# =============================================================================
+# #Import model
+# ml = flopy.modflow.Modflow.load('../Model_mio/model2.nam')    #<---------
+# 
+# # First step is to set up the plot
+# fig = plt.figure(figsize=(15, 15))
+# ax = fig.add_subplot(1, 1, 1, aspect='equal')
+# 
+# # Next we create an instance of the ModelMap class
+# modelmap = flopy.plot.ModelMap(sr=ml.dis.sr)
+# 
+# # Then we can use the plot_grid() method to draw the grid
+# # The return value for this function is a matplotlib LineCollection object,
+# # which could be manipulated (or used) later if necessary.
+# linecollection = modelmap.plot_grid(linewidth=0.4)
+# 
+# 
+# 
+# #Cross section of model grid representation
+# 
+# fig = plt.figure(figsize=(15, 6))
+# ax = fig.add_subplot(1, 1, 1)
+# # Next we create an instance of the ModelCrossSection class
+# #modelxsect = flopy.plot.ModelCrossSection(model=ml, line={'Column': 5})
+# modelxsect = flopy.plot.ModelCrossSection(model=ml, line={'Row': 99})
+# 
+# # Then we can use the plot_grid() method to draw the grid
+# # The return value for this function is a matplotlib LineCollection object,
+# # which could be manipulated (or used) later if necessary.
+# linecollection = modelxsect.plot_grid(linewidth=0.4)
+# t = ax.set_title('Column 6 Cross-Section - Model Grid')
+# 
+# 
+# 
+# #Active/inactive cells on model extension
+# 
+# fig = plt.figure(figsize=(15, 15))
+# ax = fig.add_subplot(1, 1, 1, aspect='equal')
+# modelmap = flopy.plot.ModelMap(model=ml, rotation=0)
+# quadmesh = modelmap.plot_ibound(color_noflow='cyan')
+# linecollection = modelmap.plot_grid(linewidth=0.4)
+# 
+# 
+# #Cross sections of active/inactive cells
+# 
+# fig = plt.figure(figsize=(15, 6))
+# ax = fig.add_subplot(1, 1, 1)
+# modelxsect = flopy.plot.ModelCrossSection(model=ml, line={'Column': 5})
+# patches = modelxsect.plot_ibound(color_noflow='cyan')
+# linecollection = modelxsect.plot_grid(linewidth=0.4)
+# t = ax.set_title('Column 6 Cross-Section with IBOUND Boundary Conditions')
+# 
+# 
+# #Channel network as drain (DRN) package
+# 
+# fig = plt.figure(figsize=(15, 15))
+# ax = fig.add_subplot(1, 1, 1, aspect='equal')
+# modelmap = flopy.plot.ModelMap(model=ml, rotation=-14)
+# quadmesh = modelmap.plot_ibound(color_noflow='cyan')
+# quadmesh = modelmap.plot_bc('DRN', color='blue')
+# linecollection = modelmap.plot_grid(linewidth=0.4)
+# 
+# 
+# #Model grid and heads representation
+# 
+# fname = os.path.join(modelpath, 'model2.hds')
+# hdobj = flopy.utils.HeadFile(fname)
+# head = hdobj.get_data()
+# 
+# fig = plt.figure(figsize=(30, 30))
+# ax = fig.add_subplot(1, 2, 1, aspect='equal')
+# modelmap = flopy.plot.ModelMap(model=ml, rotation=-14)
+# #quadmesh = modelmap.plot_ibound()
+# quadmesh = modelmap.plot_array(head, masked_values=[-2.e+20], alpha=0.8)
+# linecollection = modelmap.plot_grid(linewidth=0.2)
+# 
+# #############################################################
+# #Plot fluxes out of drains 3D (fette)#######################
+# ############################################################
+# 
+# a=drain_fluxes_3D[0]
+# a=a.data[40,:,:]
+# fig=plt.imshow(a, interpolation='none',vmin=-0.005, vmax=0)
+# plt.show()
+# 
+# #############################################################################
+# #Plot fluxes out of drains 2D (somma lungo le verticali)#####################
+# #############################################################################
+# 
+# ##plot singolo
+# 
+# fig=plt.imshow(drain_fluxes_2D, interpolation='none')  # ...interpolation='none',vmin=-0.01, vmax=0
+# plt.show()
+# 
+# 
+# 
+# ##plotta tutti
+# 
+# # =============================================================================
+# # plt.figure()
+# # f, axarr = plt.subplots(2,5) 
+# # 
+# # axarr[0,0].imshow(drain_fluxes_2D_ARRAY[0,:,:], interpolation='none')  
+# # axarr[0,1].imshow(drain_fluxes_2D_ARRAY[1,:,:], interpolation='none')  
+# # axarr[0,2].imshow(drain_fluxes_2D_ARRAY[2,:,:], interpolation='none')  
+# # axarr[0,3].imshow(drain_fluxes_2D_ARRAY[3,:,:], interpolation='none')  
+# # axarr[0,4].imshow(drain_fluxes_2D_ARRAY[4,:,:], interpolation='none')  
+# # axarr[1,0].imshow(drain_fluxes_2D_ARRAY[5,:,:], interpolation='none')  
+# # axarr[1,1].imshow(drain_fluxes_2D_ARRAY[6,:,:], interpolation='none')  
+# # axarr[1,2].imshow(drain_fluxes_2D_ARRAY[7,:,:], interpolation='none')  
+# # axarr[1,3].imshow(drain_fluxes_2D_ARRAY[8,:,:], interpolation='none')  
+# # axarr[1,4].imshow(drain_fluxes_2D_ARRAY[9,:,:], interpolation='none')
+# # 
+# # 
+# # =============================================================================
+# 
+# 
+# ############################################
+# ##### saves variables
+# ############################################
+# 
 # import shelve
 # 
 # filename='C:/PostDoc/Acquiferi_trentini/Risultati/AAA_adimensionali_full_run/shelve.out'
+# my_shelf = shelve.open(filename,'n') # 'n' for new
 # 
-# my_shelf = shelve.open(filename)
-# for key in my_shelf:
-#     globals()[key]=my_shelf[key]
+# my_shelf['demData_original'] = globals()['streamflow_age_ARRAY']
+# my_shelf['drain_fluxes_2D_ARRAY'] = globals()['drain_fluxes_2D_ARRAY']
+# my_shelf['traveltime_ARRAY'] = globals()['traveltime_ARRAY']
+# my_shelf['streamflow_age_ARRAY'] = globals()['streamflow_age_ARRAY']
+# 
+# 
 # my_shelf.close()
+# 
+# 
+# ############################################
+# ##### load variables
+# ############################################
+# 
+# # =============================================================================
+# # import shelve
+# # 
+# # filename='C:/PostDoc/Acquiferi_trentini/Risultati/AAA_adimensionali_full_run/shelve.out'
+# # 
+# # my_shelf = shelve.open(filename)
+# # for key in my_shelf:
+# #     globals()[key]=my_shelf[key]
+# # my_shelf.close()
+# # =============================================================================
 # =============================================================================
