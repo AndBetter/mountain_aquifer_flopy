@@ -1,28 +1,32 @@
+import multiprocessing
+from numpy import random
 import numpy as np
-import multiprocessing 
-from multiprocessing import Pool
 
-def somma(a,b):
-    x=a+b
-    y=a*b
+def somma(minimo,massimo,N):
+    x= sum(random.randint(minimo,massimo,N))/N
+    y= sum(random.randint(minimo,massimo,N)**2)/N
     return(x,y)
 
 
+def main():
+    pool = multiprocessing.Pool(16)
+    results = pool.starmap(somma, [(-1, mxx, 100000) for mxx in range(16)])
 
+    pool.close()
+    pool.join()
 
-# =============================================================================
-# for iter in range(12):
-# 
-#  print(somma(iter,iter,iter+1))
-# =============================================================================
+    RESULTS=[]
+    for result in results:
+        # prints the result string in the main process
+        print(result)
+        RESULTS.append(result)
+        
+    return RESULTS
 
-
-R=[5,4,3,2,1]
+        
 
 if __name__ == '__main__':
-   for i in R:
-    with Pool(5) as p:
-       print(p.starmap(somma, [[1, 2], [3,i]]))
-       
-       
-       
+    # Better protect your main function when you use multiprocessing
+    risultati=main()
+    risultati=np.array(risultati)
+    
