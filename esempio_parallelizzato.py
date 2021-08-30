@@ -10,7 +10,7 @@ def somma(minimo,massimo,N):
 
 def main():
     pool = multiprocessing.Pool(16)
-    results = pool.starmap(somma, [(-1, mxx, 100000) for mxx in range(16)])
+    results = pool.starmap(somma, [(-1, mxx, 10000) for mxx in range(16)])
 
     pool.close()
     pool.join()
@@ -29,4 +29,3 @@ if __name__ == '__main__':
     # Better protect your main function when you use multiprocessing
     risultati=main()
     risultati=np.array(risultati)
-    
