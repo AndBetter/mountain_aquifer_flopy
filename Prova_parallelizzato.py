@@ -23,9 +23,7 @@ import flopy.utils.binaryfile as bf
 import numpy as np
 from osgeo import gdal
 import matplotlib.pyplot as plt
-import multiprocessing as mp
-from multiprocessing import Process, Queue
-from multiprocessing import Pool
+import multiprocessing
 
 
 #############################################################################
@@ -40,8 +38,8 @@ IMP_DEPTH =[1000]                   #[0, 10, 100, 1000]                    # pro
 R =    [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455,	3.1536]                     #logscale: [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455,	3.1536]          #logscale: [0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
 MEAN_Y = [-16.12]                             #[-18.42, -17.27,  -16.12, -14.97 , -13.82, -12.67,  -11.51]                   #[-18.42, -16.12, -13.82, -11.51]      # media del campo log(k)
 VAR_Y = [0]                                   # [0, 0, 0, 0, 0, 0, 0]                        #[0, 0, 0, 0]                          # varianza del campo log(k)
-TOPOGRAPHY_FACTOR = [4]             #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
-ALPHA = [0.01]                 #[0, 0.0001, 0.001, 0.01]              # parametro che controlla la decrescita esponenziale della Ks
+TOPOGRAPHY_FACTOR = [0.025, 1]             #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
+ALPHA = [0.001]                 #[0, 0.0001, 0.001, 0.01]              # parametro che controlla la decrescita esponenziale della Ks
     
 porosity=0.1                          
                    
@@ -57,10 +55,21 @@ particle_nubmer=11283                        # da cambiare se si cambia il numer
 ######### Funzione che fa girare il modello e il particle tracking etc
 #########################################################################
 
-def MODELLO(IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):     
+def MODELLO(crData, demData,IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):     
+    
+        root_path= os.path.dirname(os.path.abspath(__file__))
+        os.chdir(root_path)
+        path= os.path.join(root_path,'output_parallelizzato',str(R))
+        os.mkdir(path)
+        os.chdir(path)
+        
+        
         ############################################
         #Initialize Modflow Nwt solver (loop dependent, altrimenti metterlo sopra ai loops)
         ###########################################
+        
+        modelname = "model_parallelizzato" 
+        modelpath = path
         
         mf1 = flopy.modflow.Modflow(modelname, exe_name= exeMODFLOW, version="mfnwt", model_ws=modelpath)
         nwt = flopy.modflow.ModflowNwt(mf1 , maxiterout=15000,  maxitinner=10000, mxiterxmd = 10000, headtol=0.001, fluxtol=R/50, linmeth=1, stoptol=1e-10, hclosexmd =1e-3, dbdtheta = 0.5, backflag=1, msdr=25, thickfact=1e-04)
@@ -113,7 +122,7 @@ def MODELLO(IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):
         if idec != 0:
             hk = np.zeros((nlay,nrow,ncol),dtype=np.float64)
         
-            f = open('field.dat', 'rb')
+            f = open(os.path.join(root_path,'field.dat'), 'rb')
             dt = np.dtype('f8')
             hk = np.fromfile( f, dtype=dt, count=-1 ).reshape((nlay,nrow,ncol),order='C')
             f.close()
@@ -251,7 +260,7 @@ def MODELLO(IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):
         # create particles distirbuite uniformemente (ricarica)--per il tracking FORWARD##
         ###################################################################################
         
-        fname = os.path.join(modelpath, 'model2.hds')
+        fname = os.path.join(modelpath, 'model_parallelizzato.hds')
         hdobj = flopy.utils.HeadFile(fname)
         head = hdobj.get_data()
         head_0=head[0,:,:]
@@ -340,7 +349,7 @@ def MODELLO(IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):
         # get travel times
         ###############################
         
-        endobj = flopy.utils.EndpointFile(modelpath + modelname + '_mp'+'.mpend')   # ottiene tutti i travel times
+        endobj = flopy.utils.EndpointFile(modelname + '_mp'+'.mpend')   # ottiene tutti i travel times
         e = endobj.get_alldata()
         traveltime=e.time
         e1 = endobj.get_data(partid=1)   # travel time per una particlella specificata
@@ -353,7 +362,7 @@ def MODELLO(IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):
         ###### estrae le traveltimes in corrispondenza dei punti in cui il fluss esce dal pc e calcola l'età dello streamflow
         #########################################################
         
-        endobj = flopy.utils.EndpointFile(modelpath + modelname + '_mp'+'.mpend')  
+        endobj = flopy.utils.EndpointFile(modelname + '_mp'+'.mpend')  
         temp=np.where(drain_fluxes_3D[0].data<0)
     
     
@@ -386,7 +395,7 @@ def MODELLO(IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):
         ####### end particle tracking ###########################################################
         #########################################################################################
 
-        return (traveltime, streamflow_age)
+        return traveltime, streamflow_age
 
 
 
@@ -395,14 +404,15 @@ def MODELLO(IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):
 #create basic modflow object ##############################################
 ###########################################################################
 
-modelname = "model2" 
-modelpath = "../Model_mio/"
 
-exeMODFLOW = "C:/DEV/Exe/MODFLOW-NWT_64.exe"
-exeMODPATH = "C:/DEV/Exe/mpath7.exe"
 
-#exeMODFLOW = "../Exe/MODFLOW-NWT_64.exe"
-#exeMODPATH = "../Exe/mpath7.exe"
+## Directories workstation
+#exeMODFLOW = "C:/DEV/Exe/MODFLOW-NWT_64.exe"
+#exeMODPATH = "C:/DEV/Exe/mpath7.exe"
+
+## Directories laptop
+exeMODFLOW = "C:/PostDoc/Acquiferi_trentini/RegionalGroundwaterModelingwithMODFLOWandFlopy/Exe/MODFLOW-NWT_64.exe"
+exeMODPATH = "C:/PostDoc/Acquiferi_trentini/RegionalGroundwaterModelingwithMODFLOWandFlopy/Exe/mpath7.exe"
 
 
 
@@ -413,8 +423,8 @@ exeMODPATH = "C:/DEV/Exe/mpath7.exe"
 #Raster paths
 
 
-demPath = "../Rst/DEM_Maso_100m.tif"           
-crPath =  "../Rst/CR_Maso_100m.tif"            
+demPath = "C:/PostDoc/Acquiferi_trentini/RegionalGroundwaterModelingwithMODFLOWandFlopy/Rst/DEM_Maso_100m.tif"           
+crPath =  "C:/PostDoc/Acquiferi_trentini/RegionalGroundwaterModelingwithMODFLOWandFlopy/Rst/CR_Maso_100m.tif"            
 
 
 #Open files
@@ -441,7 +451,7 @@ stats
 ##########################################################################
 
 run_count=0
-
+risultati=[]
 
 drain_fluxes_2D_ARRAY=np.zeros( (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA),) + demData.shape, dtype=np.float32)  # crea array vuoti che verranno riempiti durante i loop sui parametri 
 traveltime_ARRAY=np.zeros( ((particle_nubmer),+ (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA))), dtype=np.float32)
@@ -457,40 +467,24 @@ for iter_1 in range(len(IMP_DEPTH)):
    for iter_4 in range(len(MEAN_Y)): 
   
 
+    def main():
+      pool = multiprocessing.Pool(8)
+      risultati = pool.starmap(MODELLO, [(crData, demData,IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],ricarica) for ricarica in R])
+
+      pool.close()
+      pool.join()
+
+      return risultati
+
+        
+
     if __name__ == '__main__':
-     for i in R:
-      with Pool(len(R)) as p:
-       output = (p.starmap(MODELLO,  [  [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4], i]  ] ))
-       traveltime_ARRAY  =  np.append(traveltime_ARRAY,output[:,0],1)    
-       streamflow_age_ARRAY  = np.append(streamflow_age_ARRAY,output[:,1],1)  
-# =============================================================================
-#     if __name__ == '__main__':
-#       with Pool(len(R)) as p:
-#         output =(p.starmap(MODELLO, [ [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R[1]],
-#                                       [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R[2]],
-#                                       [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R[3]],
-#                                       [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R[4]],
-#                                       [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R[5]],
-#                                       [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R[6]],
-#                                       [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R[7]],
-#                                       [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R[8]],
-#                                       [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R[9]],
-#                                       [IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R[10]], ]  ))
-# =============================================================================
-                        
-                        
-                
-# =============================================================================
-#     queue = Queue()
-#     for R_i in R:
-#      processes = Process(target=MODELLO, args=(IMP_DEPTH[iter_1],TOPOGRAPHY_FACTOR[iter_2],ALPHA[iter_3],MEAN_Y[iter_4],VAR_Y[iter_4],R_i,)) 
-# 
-#     for p in processes:
-#         p.start()
-# 
-#     for p in processes:
-#         p.join()
-# =============================================================================
+     # Better protect your main function when you use multiprocessing
+    
+    
+     risultati = risultati + main()
+    
+     
      
 
         
@@ -513,7 +507,7 @@ for iter_1 in range(len(IMP_DEPTH)):
 # 
 # 
 # #Import model
-# ml = flopy.modflow.Modflow.load('../Model_mio/model2.nam')    #<---------
+# ml = flopy.modflow.Modflow.load('../Model_mio/model_parallelizzato.nam')    #<---------
 # 
 # # First step is to set up the plot
 # fig = plt.figure(figsize=(15, 15))
@@ -576,7 +570,7 @@ for iter_1 in range(len(IMP_DEPTH)):
 # 
 # #Model grid and heads representation
 # 
-# fname = os.path.join(modelpath, 'model2.hds')
+# fname = os.path.join(modelpath, 'model_parallelizzato.hds')
 # hdobj = flopy.utils.HeadFile(fname)
 # head = hdobj.get_data()
 # 
