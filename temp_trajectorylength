@@ -1,0 +1,11 @@
+import numpy as np
+D=np.zeros( (len(p),1), dtype=np.float32)
+
+for i in range(len(p)):
+    x=p[i].x
+    y=p[i].y
+    z=p[i].z
+    
+    coord_array=np.array([x,y,z]).T
+    lengths = np.sqrt(np.sum(np.diff(coord_array, axis=0)**2, axis=1)) # Length between corners
+    D[i] = np.sum(lengths)
