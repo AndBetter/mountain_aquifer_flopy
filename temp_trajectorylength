@@ -1,4 +1,7 @@
+import flopy.utils.modpathfile as mpf
 import numpy as np
+
+p = pthobj.get_alldata()
 D=np.zeros( (len(p),1), dtype=np.float32)
 
 for i in range(len(p)):
