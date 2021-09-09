@@ -352,7 +352,7 @@ def MODELLO(crData, demData,IMP_DEPTH,TOPOGRAPHY_FACTOR,ALPHA,MEAN_Y,VAR_Y,R):
         
         
         # Calcola la lunghezza dei flowpaths a partire dall'oggetto pathfile
-        flowpath_lengths=np.zeros( (len(p),1), dtype=np.float32)
+        flowpath_lengths=np.zeros( (len(p),), dtype=np.float32)
 
         for i in range(len(p)):                                                  # itera su tutti i flowpaths
             coord_array=np.array([p[i].x,p[i].y,p[i].z]).T                       # crea array nx3 con i vertici della traiettoria di un flowpat
@@ -488,9 +488,9 @@ for iter_1 in range(len(IMP_DEPTH)):
 #costuisce gli array degli outputs a partire dalle liste in "risutlati"
 
 for i in range(len(risultati)):
- traveltime_ARRAY[:,i]=risultati[i][0]
- streamflow_age_ARRAY[:,i]=risultati[i][1]
- flowpath_lengths_ARRAY[:,i]=risultati[i][2]
+ traveltime_ARRAY[0:len(risultati[i][0]),i]=risultati[i][0]
+ streamflow_age_ARRAY[0:len(risultati[i][1]),i]=risultati[i][1]
+ flowpath_lengths_ARRAY[0:len(risultati[i][2]),i]=risultati[i][2]
  drain_fluxes_2D_ARRAY[i,:,:]=risultati[i][3]
 
      
