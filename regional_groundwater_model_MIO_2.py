@@ -34,16 +34,16 @@ import matplotlib.pyplot as plt
 
 
 IMP_DEPTH =[1000]                   #[0, 10, 100, 1000]                    # profondità dello strato impermeabilie rispetto alla cella più depressa del dem
-R =    [0.0031536]                     #logscale: [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455,	3.1536]          #logscale: [0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
+R =    [3.1536]                     #logscale: [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455,	3.1536]          #logscale: [0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
 MEAN_Y = [-16.12]                             #[-18.42, -17.27,  -16.12, -14.97 , -13.82, -12.67,  -11.51]                   #[-18.42, -16.12, -13.82, -11.51]      # media del campo log(k)
 VAR_Y = [0]                                   # [0, 0, 0, 0, 0, 0, 0]                        #[0, 0, 0, 0]                          # varianza del campo log(k)
-TOPOGRAPHY_FACTOR = [4]             #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
-ALPHA = [0.01]                 #[0, 0.0001, 0.001, 0.01]              # parametro che controlla la decrescita esponenziale della Ks
+TOPOGRAPHY_FACTOR = [1]             #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
+ALPHA = [0.0001]                 #[0, 0.0001, 0.001, 0.01]              # parametro che controlla la decrescita esponenziale della Ks
     
 porosity=0.1                          
                    
 layer_number=100                             # number of layers (se si cambia bisonga cambiare anche nel generatore dei campi random)
-particle_nubmer=11283                        # da cambiare se si cambia il numero di particelle e se si cambia il DTM (cosi ce n'è una per cella)
+
 
 
 
@@ -100,8 +100,6 @@ run_count=0
 
 
 drain_fluxes_2D_ARRAY=np.zeros( (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA),) + demData.shape, dtype=np.float32)  # crea array vuoti che verranno riempiti durante i loop sui parametri 
-traveltime_ARRAY=np.zeros( ((particle_nubmer),+ (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA))), dtype=np.float32)
-streamflow_age_ARRAY=np.zeros( ((particle_nubmer),+ (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA))), dtype=np.float32)
 R_K_ratio=np.zeros( ((1),+ (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA))), dtype=np.float32)
 
 for iter_1 in range(len(IMP_DEPTH)):
@@ -217,7 +215,7 @@ for iter_1 in range(len(IMP_DEPTH)):
         
         # Add UPW package to the MODFLOW model
         
-        upw = flopy.modflow.ModflowUpw(mf1, laytyp = laytyp, hk = hk, ipakcb=53)
+        upw = flopy.modflow.ModflowUpw(mf1, laytyp = laytyp, hk = hk, ipakcb=53) #, hdry = -1 , iphdry = 1)   #  <-----------------
         
         
         #Add the recharge package (RCH) to the MODFLOW model
@@ -304,6 +302,11 @@ for iter_1 in range(len(IMP_DEPTH)):
         #######################################################################
         #######################################################################
         
+        max_particle_nubmer=sum(sum(crData>0))                    # assegna una particella per ognuna delle celle attive definite da crData - corrisponde al numero massimo (potrebbero essere meno perchè non vengono assegnate particelle se h > piano campagna, vedere sotto)
+        
+        traveltime_ARRAY=-9999*np.ones( ((max_particle_nubmer),+ (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA))), dtype=np.float32)
+        streamflow_age_ARRAY=-9999*np.ones( ((max_particle_nubmer),+ (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA))), dtype=np.float32)
+                
         
         ###################################################################################
         # create particles distirbuite uniformemente (ricarica)--per il tracking FORWARD##
@@ -319,7 +322,7 @@ for iter_1 in range(len(IMP_DEPTH)):
         particle_count=0
         for idx1 in range(nrow):    # le particelle vengono assegnate per ogni cella alla quota corrispondente alla piezomatrica 
          for idx2 in range(ncol):   
-           if demData_stretched[idx1,idx2] >0: 
+           if demData_stretched[idx1,idx2] >0 and head_0[idx1,idx2]<=demData_stretched[idx1,idx2]:   # assegna le particelle solo nei punti in cui la falda è effettivamente sotto il pc
               plocs.append((0, idx1, idx2))
               pids.append(particle_count)
               particle_count=particle_count+1
@@ -404,7 +407,7 @@ for iter_1 in range(len(IMP_DEPTH)):
         e1 = endobj.get_data(partid=1)   # travel time per una particlella specificata
         
         
-        traveltime_ARRAY[:,run_count]=traveltime
+        traveltime_ARRAY[0:len(traveltime),run_count]=traveltime
         #traveltime_ARRAY.append=traveltime
         
         ##########################################################
