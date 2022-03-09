@@ -1,19 +1,19 @@
-# =============================================================================
 # modello idrogeologico modflow/flopy che simula in stazionario la falda in una topografia complessa.
-# Prende in input ricarica ed eventualmente evapotraspirazione. I flussi in uscita 
+# Prende in input ricarica ed eventualmente evapotraspirazione (spazialmente omogenea al momento). I flussi in uscita 
 # sono simulati con il pacchetto dreno assunto distribuito in corrispondenza della topografia. In questo modo
 # si simulano le seepage faces in corrispondenza dei punti di emersione della falda (non noti a priori)
-# Bisogna dare in input il DTM della zona più un raster che funge da maschera per il bacino e identifica le celle
+# Bisogna dare in input il DTM della zona più un raster che delinea il bacino e identifica le celle
 # a cui assegnare i dreni (in questo caso tutte). 
 # # la griglia di calcolo ha layers orizzontali e i dreni vengono assegnati alla quota della topografia
 # ==
-# questa versione usa una discretizzazione a parallelepipedo e le celle fuori dal bacino o al 
-# di sopra di esso vengono disattivate(regional_groundwater_model_MIO invece ha ladiscretizzazione 
-# che segue la topografia)
+# questa versione usa una discretizzazione a parallelepipedo e le celle fuori dal bacino (in pianta)
+# vengono disattivate(regional_groundwater_model_MIO invece ha ladiscretizzazione che segue la topografia)
 #
-#Il modluo finale fa anche il particle tracking delle particelle distribuite uniformemente sulla supericie 
-#attraverso la ricarica.
-#Calcola poi il tempo di residenza delle particelle e l'età dello streamflow 
+#Il modluo finale fa anche il particle tracking delle particelle. Le particelle sono distribuite in funzione della ricarica efficace (più dense dove c'è più ricarica)
+#Calcola poi il tempo di residenza delle particelle e l'età dello streamflow. Quest'ultimo corrisponde alle età delle 
+#particelle che emergono in corrispondenza del pc, pesate in base ai flussi locali delle celle di emersione 
+
+# questa è la versione NON parallelizzata
 
 # itmuni nel dis package definisce le unità di misura del tempo; lenuni definisce quelle spaziali
 
@@ -26,7 +26,6 @@ import numpy as np
 from osgeo import gdal
 import matplotlib.pyplot as plt
 
-
 #############################################################################
 ########### Parametri su cui iterare le simulazioni##########################
 #############################################################################
@@ -36,21 +35,20 @@ import matplotlib.pyplot as plt
 
 
 IMP_DEPTH =[100]                   #[0, 10, 100, 1000]                    # profondità dello strato impermeabilie rispetto alla cella più depressa del dem
-R = [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455, 2.0, 2.6,    	3.1536]   # logspaced  [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455, 2.0, 2.6,    	3.1536]                     #logscale: [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455,	3.1536]          #logscale: [0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
+R =[1.463771455] #  [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455, 2.0, 2.6,    	3.1536]   # logspaced  [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455, 2.0, 2.6,    	3.1536]                     #logscale: [0.0031536,	0.006794225,	0.014637715,	0.031536,	0.067942252,	0.146377145,	0.31536,	0.679422524,	1.463771455,	3.1536]          #logscale: [0.0005, 0.0014, 0.0043, 0.0130, 0.0389, 0.1168, 0.3504, 1.0512, 3.1536]  # R: [0.02, 0.06325, 0.2, 0.6325, 2]             # ricarica
 MEAN_Y = [-16.12]                             #[-18.42, -17.27,  -16.12, -14.97 , -13.82, -12.67,  -11.51]                   #[-18.42, -16.12, -13.82, -11.51]      # media del campo log(k)
 VAR_Y = [0]                                   # [0, 0, 0, 0, 0, 0, 0]                        #[0, 0, 0, 0]                          # varianza del campo log(k)
-TOPOGRAPHY_FACTOR = [0.25]             #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
-ALPHA = [0.01]                 #[0, 0.0001, 0.001, 0.01]              # parametro che controlla la decrescita esponenziale della Ks
+TOPOGRAPHY_FACTOR = [1]             #[0.04,0.25, 1, 4]                      # parametro che moltiplica le quote del dem per generare topografie più o meno marcate
+ALPHA = [0.001]                 #[0, 0.0001, 0.001, 0.01]              # parametro che controlla la decrescita esponenziale della Ks
     
 porosity=0.1                          
                    
-layer_number=100       # number of layers (se si cambia bisonga cambiare anche nel generatore dei campi random)
+layer_number=100            # number of layers (se si cambia bisonga cambiare anche nel generatore dei campi random)
 
-
-
+num_particle_per_cell= 4    # numero di particelle rilasciate su ogni cella
 
 ###########################################################################
-#create basic modflow object ##############################################
+#definisce le directories utili############################################
 ###########################################################################
 
 modelname = "model2" 
@@ -61,8 +59,6 @@ exeMODPATH = "C:/DEV/Exe/mpath7.exe"
 
 #exeMODFLOW = "../Exe/MODFLOW-NWT_64.exe"
 #exeMODPATH = "../Exe/mpath7.exe"
-
-
 
 ##########################################################################
 #open and read raster files ##############################################
@@ -80,7 +76,6 @@ geot = crDs.GetGeoTransform() #Xmin, deltax, ?, ymax, ?, delta y
 
 geot
 
-
 # Get data as arrays
 demData_original = demDs.GetRasterBand(1).ReadAsArray()
 crData = crDs.GetRasterBand(1).ReadAsArray()
@@ -89,27 +84,27 @@ demData=np.array(demData_original, copy=True)
 
 demData[crData>0]=demData[crData>0]-np.min(demData[crData>0])  # shifta il dem in modo che l'outlet abbia quota 0 (in realtà 1 per motivi dei calcoli successivi)
 
-
 # Get statistics
 stats = demDs.GetRasterBand(1).GetStatistics(0,1) 
 stats
 
-
-##########################################################################
+##############################################################################
 
 run_count=0
 
-
+# alloca alcuni array
 drain_fluxes_2D_ARRAY=np.zeros( (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA),) + demData.shape, dtype=np.float32)  # crea array vuoti che verranno riempiti durante i loop sui parametri 
 drain_fluxes_minus_recharge_2D_ARRAY=np.zeros( (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA),) + demData.shape, dtype=np.float32)# array dei flussi meno la ricarica - sarebbe la ricarica effettiva
+drain_fluxes_runoff_2D_ARRAY=np.zeros( (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA),) + demData.shape, dtype=np.float32)# array della componente di runoff (i.e. la componente della ricarica che non si infiltra)
+
 R_K_ratio=np.zeros( ((1),+ (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA))), dtype=np.float32)
 
-max_particle_nubmer=sum(sum(crData>0))                    # assegna una particella per ognuna delle celle attive definite da crData - corrisponde al numero massimo (potrebbero essere meno perchè non vengono assegnate particelle se h > piano campagna, vedere sotto)
+max_particle_nubmer = num_particle_per_cell * sum(sum(crData>0))                    # assegna una particella per ognuna delle celle attive definite da crData - corrisponde al numero massimo (potrebbero essere meno perchè non vengono assegnate particelle se h > piano campagna, vedere sotto) - se si assegnano più particelle per cella bisogna cambiare
 traveltime_ARRAY=-9999*np.ones( ((max_particle_nubmer),+ (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA))), dtype=np.float32)
 streamflow_age_ARRAY=-9999*np.ones( ((max_particle_nubmer),+ (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA))), dtype=np.float32)
 flowpath_lengths_ARRAY=-9999*np.ones( ((max_particle_nubmer),+ (len(R)*len(MEAN_Y)*len(IMP_DEPTH)*len(TOPOGRAPHY_FACTOR)*len(ALPHA))), dtype=np.float32)        
 
-layer_pc=np.zeros((crData.shape[0], crData.shape[1]),dtype=np.int32)
+layer_pc=np.zeros((crData.shape[0], crData.shape[1]),dtype=np.int32)  # layer in cui è contenuto il pc 
 
 for iter_1 in range(len(IMP_DEPTH)):
     
@@ -121,7 +116,6 @@ for iter_1 in range(len(IMP_DEPTH)):
            
     for iter_5 in range(len(R)):     
        
-
 
         ###########################################################################################
         #Initialize Modflow Nwt solver (loop dependent, altrimenti metterlo sopra ai loops)########
@@ -214,11 +208,13 @@ for iter_1 in range(len(IMP_DEPTH)):
         #strt= zbot + Imp_depth - 10
         #strt= demData_stretched
         
-        # usa il potenziale del loop precedente come condizione iniziale - commentare se non si vuole fare cosi
-        if 'head_0' in globals():
-         strt= head_0[:,:]
-        else:
-         strt= demData_stretched * 0.5 + 200
+# =============================================================================
+#         # usa il potenziale del loop precedente come condizione iniziale - commentare se non si vuole fare cosi
+#         if 'head_0' in globals():
+#          strt= head_0[:,:]
+#         else:
+#          strt= demData_stretched * 0.5 + 200
+# =============================================================================
         
     
         # Add BAS package to the MODFLOW model
@@ -291,12 +287,8 @@ for iter_1 in range(len(IMP_DEPTH)):
        
         #oc = flopy.modflow.ModflowOc(mf1)
         
-        flopy.modflow.ModflowOc(mf1, stress_period_data={(0, 0): ['save head',
-                                                            'save budget',
-                                                            'print head']})
-        
-        
-        
+        flopy.modflow.ModflowOc(mf1, stress_period_data={(0, 0): ['save head','save budget', 'print head']})
+                
         ########################################################################
         ####### writes files and run simulation################################
         #######################################################################
@@ -308,9 +300,9 @@ for iter_1 in range(len(IMP_DEPTH)):
         mf1.run_model()
     
     
-        ##########################################
-        #legge il file dei potenziali e dei flussi dai dreni
-        ###########################################
+        #########################################################
+        #legge il file dei potenziali e dei flussi dai dreni#####
+        #########################################################
         
         fname = os.path.join(modelpath, modelname + ".hds")
         hds = bf.HeadFile(fname)
@@ -320,50 +312,83 @@ for iter_1 in range(len(IMP_DEPTH)):
         cbb = bf.CellBudgetFile(fname)
         kstpkper_list = cbb.get_kstpkper()
         
-        drain_fluxes_3D= cbb.get_data(kstpkper=(0,0), text='DRAIN',full3D=True)  #flussi in modflow sono in L3/L
+        drain_fluxes_3D= cbb.get_data(kstpkper=(0,0), text='DRAIN',full3D=True)  #flussi in modflow sono in L^3/T
         drain_fluxes_2D= np.sum(drain_fluxes_3D[0], axis=0)
         drain_fluxes_2D=drain_fluxes_2D/(delc*delr)          # passa da L^3/T a L/T (da portata a flusso)
         drain_fluxes_2D[crData==0]=np.NaN
         
-        
         drain_fluxes_2D_ARRAY[run_count,:,:]=drain_fluxes_2D             
-        drain_fluxes_minus_recharge_2D_ARRAY[run_count,:,:]=drain_fluxes_2D + rch_array  # RICARICA EFFETTIVA:facendo la differenza  tra flussi dai dreni e RCH è possibile stabilire la componente effettiva della ricarica (infatti quando la falda raggiunge il pc la ricarica effettiva è 0, nonostante quello che le si è assegnato a RCH)
-        
+        drain_fluxes_minus_recharge_2D_ARRAY[run_count,:,:]=drain_fluxes_2D + rch_array  # flussi in entrata (+) o uscita (-) dal sottosuolo:facendo la differenza  tra flussi dai dreni e RCH è possibile stabilire la componente effettiva della ricarica (infatti quando la falda raggiunge il pc la ricarica effettiva è 0, nonostante quello che le si è assegnato a RCH)
+
+        runoff=np.copy(drain_fluxes_2D)
+        runoff[runoff<-R[iter_5]/365/3600/24]=-R[iter_5]/365/3600/24
+        drain_fluxes_runoff_2D_ARRAY[run_count,:,:]=runoff
+    
+    
     
         #######################################################################
         #######################################################################
         #### particle tracking with modpath 7
         #######################################################################
         #######################################################################
-        
-     
-        
+
         ###################################################################################
-        # create particles distirbuite uniformemente (ricarica)--per il tracking FORWARD
+        # crea particelle distirbuite uniformemente (ricarica)--per il tracking FORWARD
         ###################################################################################
         
         fname = os.path.join(modelpath, 'model2.hds')
         hdobj = flopy.utils.HeadFile(fname)
         head = hdobj.get_data()
-        head_0=head[0,:,:]
+        head_0=head[0,:,:]  #<-------- 
         
         plocs = []
         pids = []
+        localx=[]
+        localy=[]
+        localz=[]
         particle_count=0
+        
         for idx1 in range(nrow):    # le particelle vengono assegnate per ogni cella alla quota corrispondente alla piezomatrica 
          for idx2 in range(ncol):   
-           if crData[idx1,idx2] >0 and drain_fluxes_minus_recharge_2D_ARRAY[run_count,idx1,idx1]>0:   #rch_array[idx1,idx2] >0:    # demData_stretched[idx1,idx2] >0 and head_0[idx1,idx2]<=demData_stretched[idx1,idx2]:   # assegna le particelle solo nei punti in cui la falda è effettivamente sotto il pc
-              #plocs.append((0, idx1, idx2))
-              plocs.append((layer_pc[idx1,idx2]+1, idx1, idx2))      # con 0 al primo posto le particelle vengano rilasciae nel primo layer attivo. ora vengono messe in quello successivo per evitare che vengano immediatamente rimosse - necessario perchè seenò si possono avere particelle che vengono immediatamente rimosse nonostante siano in celle di downwelling (ovvero con drain_fluxes_minus_recharge_2D_ARRAY positivo)
-              pids.append(particle_count)
-              particle_count=particle_count+1
-            
-        part0 = flopy.modpath.ParticleData(plocs, drape=1, structured=True, particleids=pids)  # drape=1: mette le particelle nel primo layer attivo sotto quello specificato in "plocs". drape=0 mette le particelle nel layer specificato in "plocs", se il layer non è attivo le particelle vengono eliminate
+           if crData[idx1,idx2] >0 and drain_fluxes_minus_recharge_2D_ARRAY[run_count,idx1,idx2]>0:   #rch_array[idx1,idx2] >0:    # demData_stretched[idx1,idx2] >0 and head_0[idx1,idx2]<=demData_stretched[idx1,idx2]:   # assegna le particelle solo nei punti in cui la falda è effettivamente sotto il pc
+               plocs.append((layer_pc[idx1, idx2], idx1, idx2))
+               plocs.append((layer_pc[idx1, idx2], idx1, idx2))
+               plocs.append((layer_pc[idx1, idx2], idx1, idx2))
+               plocs.append((layer_pc[idx1, idx2], idx1, idx2))
+               #plocs.append((layer_pc[idx1,idx2]+1, idx1, idx2))      # con 0 al primo posto le particelle vengano rilasciae nel primo layer attivo. ora vengono messe in quello successivo per evitare che vengano immediatamente rimosse - necessario perchè seenò si possono avere particelle che vengono immediatamente rimosse nonostante siano in celle di downwelling (ovvero con drain_fluxes_minus_recharge_2D_ARRAY positivo)
+               #plocs.append((layer_pc[idx1,idx2]+1, idx1, idx2))
+               #plocs.append((layer_pc[idx1,idx2]+1, idx1, idx2))
+              
+               localx.append(0.25)  # posizioni relative all'interno di ciascuna cella (ora assegna 4 particelle per cella, vedere all'inizio "num_particle_cell!")
+               localx.append(0.25)
+               localx.append(0.75)
+               localx.append(0.75)
+               
+               localy.append(0.25)
+               localy.append(0.75)
+               localy.append(0.25)
+               localy.append(0.75)
+               
+               localz.append(0.01)  # 0 corrisponde al fondo della cella, 1 al top
+               localz.append(0.01)
+               localz.append(0.01)
+               localz.append(0.01)
+               
+               pids.append(particle_count)              
+               particle_count+=1  
+               pids.append(particle_count)
+               particle_count+=1 
+               pids.append(particle_count)              
+               particle_count+=1  
+               pids.append(particle_count)
+               particle_count+=1
+
+
+           
+        part0 = flopy.modpath.ParticleData(plocs, drape=1, structured=True, particleids=pids, localx=localx, localy=localy, localz=localz)  # drape=1: mette le particelle nel primo layer attivo sotto quello specificato in "plocs". drape=0 mette le particelle nel layer specificato in "plocs", se il layer non è attivo le particelle vengono eliminate
         pg0 = flopy.modpath.ParticleGroup(particlegroupname='PG1', particledata=part0,filename='ex01a.pg1.sloc')
         
-        
-        
-        
+
         
        ##################################################################################### 
        # create particles distirbuite uniformemente (ricarica)--per il tracking BACKWARD#### 
@@ -385,9 +410,9 @@ for iter_1 in range(len(IMP_DEPTH)):
     #     pg0 = flopy.modpath.ParticleGroup(particlegroupname='PG1', particledata=part0,filename='ex01a.pg1.sloc')
     # =============================================================================
 
+
         
         particlegroups = [pg0]
-        
         
         # default iface for MODFLOW-2005 and MODFLOW 6
         defaultiface = {'RECHARGE': 6, 'ET': 6}
@@ -419,7 +444,6 @@ for iter_1 in range(len(IMP_DEPTH)):
         # run modpath
         mp.run_model()
         
-        
 
         ###########################
         # get pathline file (file molto voluminoso, commentare se non necessario)
@@ -430,17 +454,27 @@ for iter_1 in range(len(IMP_DEPTH)):
         #p1 = pthobj.get_data(partid=1)   # pathfile per una particlella specificata
         
         
-        # Calcola la lunghezza dei flowpaths a partire dall'oggetto pathfile
+        # Calcola la lunghezza dei flowpaths e velocità delle particelle a partire dall'oggetto pathfile
         flowpath_lengths=np.zeros( (len(p),), dtype=np.float32)
+        flowpath_age_mean=np.zeros( (len(p),), dtype=np.float32)
+        flowpath_velocities=[]
+        flowpath_velocities_mean=[]
 
-        for i in range(len(p)):                                                  # itera su tutti i flowpaths
-            coord_array=np.array([p[i].x,p[i].y,p[i].z]).T                       # crea array nx3 con i vertici della traiettoria di un flowpat
-            length = np.sqrt(np.sum(np.diff(coord_array, axis=0)**2, axis=1))    # calcola lunghezza singolo flowpath
-            flowpath_lengths[i] = np.sum(length)
-           
+
+        for i in range(len(p)):                                                         # itera su tutti i flowpaths
+            coord_array=np.array([p[i].x[:-1], p[i].y[:-1], p[i].z[:-1], p[i].time[:-1]]).T                 # crea array nx3 con i vertici della traiettoria di un flowpat
+            delta_length = np.sqrt(np.sum(np.diff(coord_array[:,0:3], axis=0)**2, axis=1))    # calcola lunghezza singolo flowpath
+            flowpath_lengths[i] = np.sum(delta_length)
+            delta_time=np.diff(coord_array[:,3], axis=0)
+            flowpath_velocities.append(delta_length/delta_time)
+            flowpath_velocities_mean.append(np.mean(flowpath_velocities[-1][np.isfinite(flowpath_velocities[-1])]))
+            flowpath_age_mean[i]= np.sum(coord_array[0:-1,3] * delta_length) / flowpath_lengths[i]
+        
+        flowpath_velocities_mean=np.array(flowpath_velocities_mean)    
         flowpath_lengths_ARRAY[0:len(flowpath_lengths),run_count]=flowpath_lengths                
         
-        ###########################
+        
+        ###############################
         # get travel times
         ###############################
         
@@ -451,43 +485,71 @@ for iter_1 in range(len(IMP_DEPTH)):
         
         
         traveltime_ARRAY[0:len(traveltime),run_count]=traveltime
-        #traveltime_ARRAY.append=traveltime
         
         #####################################################################################################################
-        ###### estrae le traveltimes in corrispondenza dei punti in cui il fluss esce dal pc e calcola l'età dello streamflow
+        ###### estrae le traveltimes in corrispondenza dei punti in cui i dreni sono attivi e calcola l'età dello streamflow pesando l'età delle particelle in uscita per il loro flusso
         #####################################################################################################################
         
-        endobj = flopy.utils.EndpointFile(modelpath + modelname + '_mp'+'.mpend')  
-        temp=np.where(drain_fluxes_3D[0].data<0)
-    
+        endobj = flopy.utils.EndpointFile(modelpath + modelname + '_mp'+'.mpend')  # estra l'endobject
+        outflow_kij=np.where(drain_fluxes_3D[0].data < -R[iter_5]/365/3600/24*delc*delr)     # identifica le celle in cui vi sono flussi emergenti (in questo caso i dreni estraggono quello che viene da sotto più la ricarica che viene subito drenata)
     
         flux=[]
+        flux_minus_recharge=[]
         time_particles_at_cell=[]
         streamflow_age=[]
+        streamflow_age_weight=[]
         
-        for i in range(len(temp[0])): 
-            flux.append(drain_fluxes_3D[0].data[temp[0][i], temp[1][i], temp[2][i]]) 
-            e0 = endobj.get_destination_endpoint_data(dis.get_node((temp[0][i], temp[1][i], temp[2][i])))  # dis.get_node ottiene a partire dalla terna k,i,j il codice identificativo univoco della cella 
+        #per ogni cella in cui ci sono flussi in uscita estra le età delle particelle in uscita
+        for i in range(len(outflow_kij[0])): 
+            flux.append(drain_fluxes_3D[0].data[outflow_kij[0][i], outflow_kij[1][i], outflow_kij[2][i]]) 
+            e0 = endobj.get_destination_endpoint_data(dis.get_node((outflow_kij[0][i], outflow_kij[1][i], outflow_kij[2][i])))  # dis.get_node ottiene a partire dalla terna k,i,j il codice identificativo univoco della cella 
             time_particles_at_cell.append(e0.time) 
     
     
-        for i in range(len(flux)):  # cambia di segno ai flussi (flussi sono in L3/T : m3/s) e rimuove i flussi dovuti alla ricarica che cade in corrispondenza delle sorgenti 
-            flux[i]= (flux[i]  + R[iter_5]/3600/24/365*delc*delr) * (-1) 
+# =============================================================================
+#         for i in range(len(flux)):  #    rimuove dai flussi in usicta la componente dovuta alla ricarica che cade in corrispondenza dei punti da cui i dreni estraggono 
+#             flux_minus_recharge.append(flux[i]  + R[iter_5]/3600/24/365*delc*delr)
+#     
+#         
+#         flux_array = np.array(flux_minus_recharge)
+#         
+#         flux_sub   = np.zeros(np.shape(flux_array),dtype=float)
+#         flux_sup   = np.zeros(np.shape(flux_array),dtype=float)
+#         
+#         flux_sub[flux_array<0] = flux_array[flux_array<0]  #flussi_sub: sono i flussi che emergono dal sottosuolo
+#         flux_sup[flux_array>=0]= flux_array[flux_array>=0] # flussi sup: sono la componente della ricarica che non si infilta (casi in cui non tutta la ricarica riesce ad infiltrarsi o casi in cui la ricarica è assegnata a punti in cui ci sono flussi sotterranei in uscita)
+#         flux_sup[flux_array<0] = R[iter_5]/3600/24/365*delc*delr
+#         
+#         
+#         flux_sub_sum   = np.abs(np.sum(flux_sub))           #componente di groundwater (fuoriesce dopo essersi infiltrata)
+#         flux_sup_sum   = np.abs(np.sum(flux_sup))           #componente di acqua superficiale (ricarica che non si infiltra e diveta subito runoff superficiale). equivalente a: np.sum(crData>0)*delc*delr*R[iter_5]/3600/24/365 - flux_sub_sum
+#     
+#     
+#     
+#        # tentativo parte  nuova
+#         for j in range(len(time_particles_at_cell)):    #calcola le età pesate con i flussi
+#          for jj in range(len(time_particles_at_cell[j])):
+#             streamflow_age.append( time_particles_at_cell[j][jj] )
+#             streamflow_age_weight.append(  -  flux_minus_recharge[j] / (flux_sub_sum + flux_sup_sum) )
+#         
+#         streamflow_age=np.log10(np.array(streamflow_age))    # passa da liste ad array e trasforma le età in log (età)
+#         streamflow_age_weight=np.array(streamflow_age_weight)
+#         
+#         [streamflow_age_hist_values, streamflow_age_hist_bins] = np.histogram(streamflow_age, weights=streamflow_age_weight,bins=50, range=(1,15)) # istogramma pesato sui flussi. da in output i bins delle età e le frequenze pesate (i.e. età dellgli streamflows)
+#     
+# =============================================================================
     
-        
-        flux_array = np.array(flux)
-        flux_sub   = np.abs(np.sum(flux_array[flux_array<0]))                   #componente di groundwater (fuoriesce dopo essersi infiltrata)
-        flux_sup   = sum(crData>0)*delc*delr*R[iter_5]/3600/24/365 - flux_sub   #componente di acqua superficiale (ricarica che non si infiltra e diveta subito runoff superficiale)
-    
-    
-        for j in range(len(time_particles_at_cell)):    #calcola le età pesate con i flussi
-         for jj in range(len(time_particles_at_cell[j])):
-            streamflow_age.append(time_particles_at_cell[j][jj]*flux[j] / sum(flux) )
+    # parte vecchi, probabilmente sbagliata
+# =============================================================================
+#         for j in range(len(time_particles_at_cell)):    #calcola le età pesate con i flussi
+#          for jj in range(len(time_particles_at_cell[j])):
+#             streamflow_age.append(time_particles_at_cell[j][jj]*flux[j] / sum(flux) )
+# =============================================================================
             
-        streamflow_age=np.array(streamflow_age)     
+        #streamflow_age=np.array(streamflow_age)     
             
             
-        streamflow_age_ARRAY[0:len(streamflow_age),run_count]=streamflow_age
+        #streamflow_age_ARRAY[0:len(streamflow_age),run_count]=streamflow_age
     
         R_K_ratio[0,run_count] = ( R[iter_5] / 3600/24/365) /  np.exp(  (MEAN_Y[iter_4] + VAR_Y[iter_4])/2)
     
